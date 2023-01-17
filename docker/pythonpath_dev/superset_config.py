@@ -25,6 +25,7 @@ import os
 from datetime import timedelta
 from typing import Optional
 
+from flask_appbuilder.security.manager import AUTH_OAUTH
 from cachelib.file import FileSystemCache
 from celery.schedules import crontab
 
@@ -121,3 +122,43 @@ try:
     )
 except ImportError:
     logger.info("Using default Docker config...")
+
+OAUTH_CLIENT_ID = get_env_variable("OAUTH_CLIENT_ID")
+OAUTH_CLIENT_SECERT = get_env_variable("OAUTH_CLIENT_SECERT")
+
+AUTH_TYPE = AUTH_OAUTH
+AUTH_ROLE_ADMIN = 'Admin'
+AUTH_USER_REGISTRATION = True
+AUTH_ROLES_SYNC_AT_LOGIN = False
+AUTH_USER_REGISTRATION_ROLE = "Admin"
+OAUTH_PROVIDERS = [
+  {
+        "name": "google",
+        "icon": "fa-google",
+        "whitelist": ["@cybavo.com", "@circle.com"],
+        "token_key": "access_token",
+        "remote_app": {
+            "client_id": OAUTH_CLIENT_ID,
+            "client_secret": OAUTH_CLIENT_SECERT,
+            "api_base_url": "https://www.googleapis.com/oauth2/v2/",
+            "client_kwargs": {"scope": "email profile"},
+            "access_token_url": "https://accounts.google.com/o/oauth2/token",
+            "authorize_url": "https://accounts.google.com/o/oauth2/auth",
+            "jwks_uri": "https://www.googleapis.com/oauth2/v3/certs",
+        },
+    },
+]
+
+import logging
+from superset.security import SupersetSecurityManager
+
+class CustomSsoSecurityManager(SupersetSecurityManager):
+
+    def oauth_user_info(self, provider, response=None):
+        logging.debug("Oauth2 provider: {0}.".format(provider))
+        if provider == 'google':
+            # As example, this line request a GET to base_url + '/' + userDetails with Bearer  Authentication,
+            # and expects that authorization server checks the token, and response with user details
+            me = self.appbuilder.sm.oauth_remotes[provider].get('userDetails').data
+            logging.debug("user_data: {0}".format(me))
+            return { 'name' : me['name'], 'email' : me['email'], 'id' : me['user_name']}
